@@ -29,3 +29,39 @@ export interface Preset {
   particleCount: number;
   initialConfig: 'dam' | 'drop' | 'fountain' | 'wave';
 }
+
+export type TargetShape = 'rect' | 'circle' | 'custom';
+
+export interface ExperimentTarget {
+  id: string;
+  name: string;
+  shape: TargetShape;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  radius?: number;
+  points?: { x: number; y: number }[];
+  targetFillRatio: number;
+  color: string;
+}
+
+export interface ExperimentResult {
+  completion: number;
+  elapsedTime: number;
+  particlesInTarget: number;
+  totalParticles: number;
+  isComplete: boolean;
+}
+
+export interface ExperimentPreset {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  initialConfig: 'dam' | 'drop' | 'fountain' | 'wave';
+  particleCount: number;
+  params: Partial<SimParams>;
+  targets: ExperimentTarget[];
+  timeLimit?: number;
+}

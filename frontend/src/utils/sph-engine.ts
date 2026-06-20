@@ -1,4 +1,4 @@
-import type { Particle, SimParams, Preset } from '../types'
+import type { Particle, SimParams, Preset, ExperimentTarget, ExperimentResult, ExperimentPreset } from '../types'
 
 export const DEFAULT_PARAMS: SimParams = {
   gravity: 9.8,
@@ -89,7 +89,7 @@ export class SPHEngine {
   }
 
   initParticles(config: 'dam' | 'drop' | 'fountain' | 'wave', count?: number) {
-    const n = count ?? this.particles.length || 800
+    const n = count ?? (this.particles.length || 800)
     this.particles = []
 
     switch (config) {
@@ -325,4 +325,174 @@ export class SPHEngine {
       }
     }
   }
+
+  isPointInTarget(px: number, py: number, target: ExperimentTarget): boolean {
+    switch (target.shape) {
+      case 'rect': {
+        const w = target.width ?? 100
+        const h = target.height ?? 100
+        return px >= target.x && px <= target.x + w && py >= target.y && py <= target.y + h
+      }
+      case 'circle': {
+        const r = target.radius ?? 50
+        const dx = px - target.x
+        const dy = py - target.y
+        return dx * dx + dy * dy <= r * r
+      }
+      case 'custom': {
+        const points = target.points ?? []
+        if (points.length < 3) return false
+        let inside = false
+        for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+          const xi = points[i].x, yi = points[i].y
+          const xj = points[j].x, yj = points[j].y
+          if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+            inside = !inside
+          }
+        }
+        return inside
+      }
+      default:
+        return false
+    }
+  }
+
+  countParticlesInTarget(target: ExperimentTarget): number {
+    let count = 0
+    for (const p of this.particles) {
+      if (this.isPointInTarget(p.x, p.y, target)) {
+        count++
+      }
+    }
+    return count
+  }
+
+  evaluateTargets(targets: ExperimentTarget[], elapsedTime: number): ExperimentResult {
+    let totalInTarget = 0
+    let totalTargetRatio = 0
+    const total = this.particles.length
+
+    for (const target of targets) {
+      const count = this.countParticlesInTarget(target)
+      totalInTarget += count
+      const targetParticles = Math.floor(total * target.targetFillRatio)
+      totalTargetRatio += Math.min(count / targetParticles, 1)
+    }
+
+    const completion = targets.length > 0 ? (totalTargetRatio / targets.length) * 100 : 0
+    const isComplete = completion >= 100
+
+    return {
+      completion,
+      elapsedTime,
+      particlesInTarget: totalInTarget,
+      totalParticles: total,
+      isComplete,
+    }
+  }
 }
+
+export const EXPERIMENT_PRESETS: ExperimentPreset[] = [
+  {
+    id: 'fill-right',
+    name: 'fill-right',
+    label: '右侧充水实验',
+    description: '引导水流填满右侧区域，考察流体扩散能力',
+    initialConfig: 'dam',
+    particleCount: 800,
+    params: { gravity: 9.8, viscosity: 1.0, smoothingRadius: 16 },
+    targets: [
+      {
+        id: 't1',
+        name: '右侧区域',
+        shape: 'rect',
+        x: 550,
+        y: 100,
+        width: 200,
+        height: 350,
+        targetFillRatio: 0.4,
+        color: '#22c55e',
+      },
+    ],
+    timeLimit: 30,
+  },
+  {
+    id: 'drop-in-basin',
+    name: 'drop-in-basin',
+    label: '水滴入池实验',
+    description: '水滴落入底部圆形区域，观察扩散和飞溅',
+    initialConfig: 'drop',
+    particleCount: 600,
+    params: { gravity: 12.0, viscosity: 0.8, smoothingRadius: 14 },
+    targets: [
+      {
+        id: 't1',
+        name: '底部圆池',
+        shape: 'circle',
+        x: 400,
+        y: 420,
+        radius: 120,
+        targetFillRatio: 0.5,
+        color: '#3b82f6',
+      },
+    ],
+    timeLimit: 20,
+  },
+  {
+    id: 'fountain-reach',
+    name: 'fountain-reach',
+    label: '喷泉高度实验',
+    description: '喷泉粒子需要到达顶部目标区域',
+    initialConfig: 'fountain',
+    particleCount: 1000,
+    params: { gravity: 8.0, viscosity: 1.2, smoothingRadius: 18 },
+    targets: [
+      {
+        id: 't1',
+        name: '顶部区域',
+        shape: 'rect',
+        x: 350,
+        y: 30,
+        width: 100,
+        height: 50,
+        targetFillRatio: 0.05,
+        color: '#f59e0b',
+      },
+    ],
+    timeLimit: 15,
+  },
+  {
+    id: 'dual-target',
+    name: 'dual-target',
+    label: '双目标填充',
+    description: '同时填充左右两个目标区域，考察分流效果',
+    initialConfig: 'wave',
+    particleCount: 900,
+    params: { gravity: 6.0, viscosity: 0.5, smoothingRadius: 15 },
+    targets: [
+      {
+        id: 't1',
+        name: '左侧目标',
+        shape: 'rect',
+        x: 50,
+        y: 350,
+        width: 120,
+        height: 120,
+        targetFillRatio: 0.2,
+        color: '#8b5cf6',
+      },
+      {
+        id: 't2',
+        name: '右侧目标',
+        shape: 'rect',
+        x: 630,
+        y: 350,
+        width: 120,
+        height: 120,
+        targetFillRatio: 0.2,
+        color: '#ec4899',
+      },
+    ],
+    timeLimit: 25,
+  },
+]

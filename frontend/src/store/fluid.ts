@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { SPHEngine, DEFAULT_PARAMS, PRESETS } from '../utils/sph-engine'
-import type { SimParams, Preset, Particle } from '../types'
+import { SPHEngine, DEFAULT_PARAMS, PRESETS, EXPERIMENT_PRESETS } from '../utils/sph-engine'
+import type { SimParams, Preset, Particle, ExperimentPreset, ExperimentTarget, ExperimentResult } from '../types'
 
 export const useFluidStore = defineStore('fluid', {
   state: () => ({
@@ -15,6 +15,14 @@ export const useFluidStore = defineStore('fluid', {
     _lastTime: 0,
     _fpsAccum: 0,
     _fpsFrames: 0,
+    isExperimentMode: false,
+    currentExperiment: null as ExperimentPreset | null,
+    experimentTargets: [] as ExperimentTarget[],
+    experimentResult: null as ExperimentResult | null,
+    experimentStartTime: 0,
+    experimentElapsedTime: 0,
+    experimentCompleted: false,
+    _experimentTimer: null as number | null,
   }),
   getters: {
     particleArray: (state) => state.engine?.particles ?? [],
@@ -95,6 +103,83 @@ export const useFluidStore = defineStore('fluid', {
           this.engine['cellSize'] = value
         }
       }
+    },
+    startExperiment(experiment: ExperimentPreset) {
+      this.isExperimentMode = true
+      this.currentExperiment = experiment
+      this.experimentTargets = [...experiment.targets]
+      this.particleCount = experiment.particleCount
+      this.params = { ...DEFAULT_PARAMS, ...experiment.params }
+
+      const canvas = { width: 800, height: 500 }
+      this.engine = new SPHEngine(this.particleCount, canvas.width, canvas.height, this.params)
+      this.engine.initParticles(experiment.initialConfig, this.particleCount)
+
+      this.frameCount = 0
+      this.fps = 0
+      this.experimentResult = null
+      this.experimentCompleted = false
+      this.experimentElapsedTime = 0
+
+      this.isRunning = true
+      this.experimentStartTime = performance.now()
+      this._lastTime = performance.now()
+      this._fpsAccum = 0
+      this._fpsFrames = 0
+
+      const loop = (now: number) => {
+        if (!this.isRunning || !this.engine) return
+        const elapsed = now - this._lastTime
+        this._lastTime = now
+        this._fpsAccum += elapsed
+        this._fpsFrames++
+        if (this._fpsAccum >= 500) {
+          this.fps = Math.round(this._fpsFrames / (this._fpsAccum / 1000))
+          this._fpsAccum = 0
+          this._fpsFrames = 0
+        }
+
+        this.experimentElapsedTime = (now - this.experimentStartTime) / 1000
+
+        const subSteps = 3
+        for (let s = 0; s < subSteps; s++) {
+          this.engine.step()
+        }
+        this.frameCount++
+
+        const result = this.engine.evaluateTargets(this.experimentTargets, this.experimentElapsedTime)
+        this.experimentResult = result
+
+        if (result.isComplete && !this.experimentCompleted) {
+          this.experimentCompleted = true
+        }
+
+        if (experiment.timeLimit && this.experimentElapsedTime >= experiment.timeLimit) {
+          this.stop()
+          return
+        }
+
+        this._animId = requestAnimationFrame(loop)
+      }
+      this._animId = requestAnimationFrame(loop)
+    },
+    stopExperiment() {
+      this.stop()
+      this.isExperimentMode = false
+      this.currentExperiment = null
+      this.experimentTargets = []
+      this.experimentResult = null
+      this.experimentCompleted = false
+      this.experimentElapsedTime = 0
+    },
+    resetExperiment() {
+      if (this.currentExperiment) {
+        this.startExperiment(this.currentExperiment)
+      }
+    },
+    evaluateExperiment() {
+      if (!this.engine || this.experimentTargets.length === 0) return null
+      return this.engine.evaluateTargets(this.experimentTargets, this.experimentElapsedTime)
     },
   },
 })

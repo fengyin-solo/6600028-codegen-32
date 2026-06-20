@@ -47,6 +47,51 @@ function draw() {
     ctx.stroke()
   }
 
+  if (store.isExperimentMode && store.experimentTargets.length > 0) {
+    for (const target of store.experimentTargets) {
+      ctx.save()
+      ctx.globalAlpha = 0.15
+      ctx.fillStyle = target.color
+      ctx.strokeStyle = target.color
+      ctx.lineWidth = 2
+
+      if (target.shape === 'rect') {
+        const w = target.width ?? 100
+        const h = target.height ?? 100
+        ctx.fillRect(target.x, target.y, w, h)
+        ctx.globalAlpha = 0.8
+        ctx.strokeRect(target.x, target.y, w, h)
+      } else if (target.shape === 'circle') {
+        const r = target.radius ?? 50
+        ctx.beginPath()
+        ctx.arc(target.x, target.y, r, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 0.8
+        ctx.stroke()
+      } else if (target.shape === 'custom' && target.points && target.points.length > 2) {
+        ctx.beginPath()
+        ctx.moveTo(target.points[0].x, target.points[0].y)
+        for (let i = 1; i < target.points.length; i++) {
+          ctx.lineTo(target.points[i].x, target.points[i].y)
+        }
+        ctx.closePath()
+        ctx.fill()
+        ctx.globalAlpha = 0.8
+        ctx.stroke()
+      }
+
+      ctx.globalAlpha = 0.9
+      ctx.fillStyle = target.color
+      ctx.font = 'bold 12px sans-serif'
+      if (target.shape === 'rect') {
+        ctx.fillText(target.name, target.x + 5, target.y + 16)
+      } else if (target.shape === 'circle') {
+        ctx.fillText(target.name, target.x - 30, target.y - (target.radius ?? 50) + 16)
+      }
+      ctx.restore()
+    }
+  }
+
   if (!store.engine) return
 
   // Draw density heatmap background (low-res)
