@@ -142,13 +142,13 @@ export class SPHEngine {
         // Emit from bottom center
         const cx = this.width / 2
         for (let i = 0; i < n; i++) {
-          const spread = 30
+          const spread = 20
           const p = this.createParticle(
             cx + (Math.random() - 0.5) * spread,
             this.height - 20 - Math.random() * 30
           )
-          p.vy = -80 - Math.random() * 60
-          p.vx = (Math.random() - 0.5) * 40
+          p.vy = -200 - Math.random() * 120
+          p.vx = (Math.random() - 0.5) * 20
           this.particles.push(p)
         }
         break
@@ -326,6 +326,22 @@ export class SPHEngine {
     }
   }
 
+  emitFountainParticles(count: number, maxTotal: number = 1500) {
+    if (this.particles.length >= maxTotal) return
+    const cx = this.width / 2
+    const actualCount = Math.min(count, maxTotal - this.particles.length)
+    for (let i = 0; i < actualCount; i++) {
+      const spread = 20
+      const p = this.createParticle(
+        cx + (Math.random() - 0.5) * spread,
+        this.height - 20 - Math.random() * 30
+      )
+      p.vy = -200 - Math.random() * 120
+      p.vx = (Math.random() - 0.5) * 20
+      this.particles.push(p)
+    }
+  }
+
   isPointInTarget(px: number, py: number, target: ExperimentTarget): boolean {
     switch (target.shape) {
       case 'rect': {
@@ -367,16 +383,33 @@ export class SPHEngine {
     return count
   }
 
-  evaluateTargets(targets: ExperimentTarget[], elapsedTime: number): ExperimentResult {
+  evaluateTargets(
+    targets: ExperimentTarget[],
+    elapsedTime: number,
+    baseParticleCount?: number
+  ): ExperimentResult {
     let totalInTarget = 0
     let totalTargetRatio = 0
-    const total = this.particles.length
+    const currentTotal = this.particles.length
+    const baseTotal = baseParticleCount ?? currentTotal
 
     for (const target of targets) {
       const count = this.countParticlesInTarget(target)
       totalInTarget += count
-      const targetParticles = Math.floor(total * target.targetFillRatio)
-      totalTargetRatio += Math.min(count / targetParticles, 1)
+
+      const targetArea = this.computeTargetArea(target)
+      const particleArea = 16 * 16
+      const maxFitParticles = Math.floor(targetArea / particleArea)
+      const targetParticles = Math.min(
+        Math.floor(baseTotal * target.targetFillRatio),
+        maxFitParticles
+      )
+
+      if (targetParticles > 0) {
+        totalTargetRatio += Math.min(count / targetParticles, 1)
+      } else {
+        totalTargetRatio += 1
+      }
     }
 
     const completion = targets.length > 0 ? (totalTargetRatio / targets.length) * 100 : 0
@@ -386,8 +419,28 @@ export class SPHEngine {
       completion,
       elapsedTime,
       particlesInTarget: totalInTarget,
-      totalParticles: total,
+      totalParticles: currentTotal,
       isComplete,
+    }
+  }
+
+  computeTargetArea(target: ExperimentTarget): number {
+    switch (target.shape) {
+      case 'rect':
+        return (target.width ?? 100) * (target.height ?? 100)
+      case 'circle':
+        return Math.PI * (target.radius ?? 50) ** 2
+      case 'custom': {
+        const points = target.points ?? []
+        if (points.length < 3) return 0
+        let area = 0
+        for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+          area += (points[j].x + points[i].x) * (points[j].y - points[i].y)
+        }
+        return Math.abs(area / 2)
+      }
+      default:
+        return 0
     }
   }
 }
@@ -397,24 +450,24 @@ export const EXPERIMENT_PRESETS: ExperimentPreset[] = [
     id: 'fill-right',
     name: 'fill-right',
     label: '右侧充水实验',
-    description: '引导水流填满右侧区域，考察流体扩散能力',
+    description: '引导水流填满右侧底部区域，考察流体扩散能力',
     initialConfig: 'dam',
-    particleCount: 800,
-    params: { gravity: 9.8, viscosity: 1.0, smoothingRadius: 16 },
+    particleCount: 1000,
+    params: { gravity: 9.8, viscosity: 0.8, smoothingRadius: 16, damping: 0.3 },
     targets: [
       {
         id: 't1',
-        name: '右侧区域',
+        name: '右侧底部区域',
         shape: 'rect',
         x: 550,
-        y: 100,
+        y: 320,
         width: 200,
-        height: 350,
-        targetFillRatio: 0.4,
+        height: 160,
+        targetFillRatio: 0.25,
         color: '#22c55e',
       },
     ],
-    timeLimit: 30,
+    timeLimit: 40,
   },
   {
     id: 'drop-in-basin',
@@ -422,77 +475,77 @@ export const EXPERIMENT_PRESETS: ExperimentPreset[] = [
     label: '水滴入池实验',
     description: '水滴落入底部圆形区域，观察扩散和飞溅',
     initialConfig: 'drop',
-    particleCount: 600,
-    params: { gravity: 12.0, viscosity: 0.8, smoothingRadius: 14 },
+    particleCount: 800,
+    params: { gravity: 10.0, viscosity: 1.5, smoothingRadius: 14, damping: 0.15 },
     targets: [
       {
         id: 't1',
         name: '底部圆池',
         shape: 'circle',
         x: 400,
-        y: 420,
-        radius: 120,
-        targetFillRatio: 0.5,
+        y: 430,
+        radius: 150,
+        targetFillRatio: 0.4,
         color: '#3b82f6',
       },
     ],
-    timeLimit: 20,
+    timeLimit: 40,
   },
   {
     id: 'fountain-reach',
     name: 'fountain-reach',
     label: '喷泉高度实验',
-    description: '喷泉粒子需要到达顶部目标区域',
+    description: '喷泉粒子需要到达中下部目标区域',
     initialConfig: 'fountain',
-    particleCount: 1000,
-    params: { gravity: 8.0, viscosity: 1.2, smoothingRadius: 18 },
+    particleCount: 1200,
+    params: { gravity: 3.5, viscosity: 0.8, smoothingRadius: 18, damping: 0.4 },
     targets: [
       {
         id: 't1',
-        name: '顶部区域',
+        name: '中下部区域',
         shape: 'rect',
-        x: 350,
-        y: 30,
-        width: 100,
-        height: 50,
-        targetFillRatio: 0.05,
+        x: 280,
+        y: 340,
+        width: 240,
+        height: 100,
+        targetFillRatio: 0.08,
         color: '#f59e0b',
       },
     ],
-    timeLimit: 15,
+    timeLimit: 35,
   },
   {
     id: 'dual-target',
     name: 'dual-target',
     label: '双目标填充',
-    description: '同时填充左右两个目标区域，考察分流效果',
+    description: '同时填充左右两个底部目标区域，考察分流效果',
     initialConfig: 'wave',
-    particleCount: 900,
-    params: { gravity: 6.0, viscosity: 0.5, smoothingRadius: 15 },
+    particleCount: 1100,
+    params: { gravity: 8.0, viscosity: 0.6, smoothingRadius: 15, damping: 0.25 },
     targets: [
       {
         id: 't1',
         name: '左侧目标',
         shape: 'rect',
-        x: 50,
-        y: 350,
-        width: 120,
-        height: 120,
-        targetFillRatio: 0.2,
+        x: 20,
+        y: 380,
+        width: 160,
+        height: 100,
+        targetFillRatio: 0.12,
         color: '#8b5cf6',
       },
       {
         id: 't2',
         name: '右侧目标',
         shape: 'rect',
-        x: 630,
-        y: 350,
-        width: 120,
-        height: 120,
-        targetFillRatio: 0.2,
+        x: 620,
+        y: 380,
+        width: 160,
+        height: 100,
+        targetFillRatio: 0.12,
         color: '#ec4899',
       },
     ],
-    timeLimit: 25,
+    timeLimit: 40,
   },
 ]

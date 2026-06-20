@@ -141,13 +141,23 @@ export const useFluidStore = defineStore('fluid', {
 
         this.experimentElapsedTime = (now - this.experimentStartTime) / 1000
 
+        if (experiment.initialConfig === 'fountain') {
+          if (this.frameCount % 2 === 0) {
+            this.engine.emitFountainParticles(12, Math.max(experiment.particleCount * 2.5, 3000))
+          }
+        }
+
         const subSteps = 3
         for (let s = 0; s < subSteps; s++) {
           this.engine.step()
         }
         this.frameCount++
 
-        const result = this.engine.evaluateTargets(this.experimentTargets, this.experimentElapsedTime)
+        const result = this.engine.evaluateTargets(
+          this.experimentTargets,
+          this.experimentElapsedTime,
+          experiment.particleCount
+        )
         this.experimentResult = result
 
         if (result.isComplete && !this.experimentCompleted) {
@@ -179,7 +189,11 @@ export const useFluidStore = defineStore('fluid', {
     },
     evaluateExperiment() {
       if (!this.engine || this.experimentTargets.length === 0) return null
-      return this.engine.evaluateTargets(this.experimentTargets, this.experimentElapsedTime)
+      return this.engine.evaluateTargets(
+        this.experimentTargets,
+        this.experimentElapsedTime,
+        this.currentExperiment?.particleCount
+      )
     },
   },
 })
